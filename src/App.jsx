@@ -1,23 +1,54 @@
+import { ShoppingCartOutlined } from '@ant-design/icons';
+import {
+  App as AntdApp,
+  Badge,
+  Button,
+  Card,
+  Col,
+  ConfigProvider,
+  Drawer,
+  Flex,
+  Grid,
+  Row,
+  Space,
+  Spin,
+  Tree,
+  Typography,
+} from 'antd';
+import zhCN from 'antd/locale/zh_CN';
 import { useEffect, useState } from 'react';
-import CategoryMenu from './CategoryMenu';
-import { categoryIdsFor, categoryName, fetchProducts } from './mock/products';
+import { CATEGORY_TREE, categoryIdsFor, categoryName, fetchProducts } from './mock/products';
 import { useCartStore } from './store/cart';
+
+const { Title, Text, Paragraph } = Typography;
+
+const treeData = [
+  { key: 'all', title: '全部' },
+  ...CATEGORY_TREE.map((parent) => ({
+    key: parent.id,
+    title: parent.name,
+    children: parent.children.map((child) => ({
+      key: child.id,
+      title: child.name,
+    })),
+  })),
+];
 
 function formatPrice(value) {
   return `¥${value.toFixed(2)}`;
 }
 
-let toastSeq = 0;
+function Shop() {
+  const { message } = AntdApp.useApp();
+  const screens = Grid.useBreakpoint();
+  const isMobile = !screens.md;
 
-export default function App() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [cartOpen, setCartOpen] = useState(false);
   const [categoryId, setCategoryId] = useState('all');
-  const [expanded, setExpanded] = useState(['home', 'digital', 'wear']);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [toasts, setToasts] = useState([]);
 
   const addItem = useCartStore((s) => s.addItem);
   const setQty = useCartStore((s) => s.setQty);
@@ -35,40 +66,27 @@ export default function App() {
     ? products.filter((product) => allowedIds.includes(product.categoryId))
     : products;
 
-  function pushToast(message) {
-    const id = ++toastSeq;
-    setToasts((list) => [...list, { id, message }].slice(-3));
-    window.setTimeout(() => {
-      setToasts((list) => list.filter((item) => item.id !== id));
-    }, 1800);
+  function selectCategory(id) {
+    setCategoryId(id);
+    setMobileMenuOpen(false);
   }
 
   function handleAdd(product) {
     const result = addItem(product);
     if (!result.added) {
-      pushToast(`库存不足，仅剩 ${result.stock} 件`);
+      message.warning(`库存不足，仅剩 ${result.stock} 件`);
       return;
     }
-    pushToast(result.limited ? '已加入购物车，已达库存上限' : '已加入购物车');
+    if (result.limited) message.warning('已加入购物车，已达库存上限');
+    else message.success('已加入购物车');
   }
 
   function handleQty(productId, delta) {
     const row = items[productId];
     if (!row) return;
     const result = setQty(productId, row.qty + delta);
-    if (result.removed) pushToast('已从购物车移除');
-    else if (result.limited) pushToast(`库存不足，仅剩 ${result.stock} 件`);
-  }
-
-  function selectCategory(id) {
-    setCategoryId(id);
-    setMobileMenuOpen(false);
-  }
-
-  function toggleExpanded(id) {
-    setExpanded((list) =>
-      list.includes(id) ? list.filter((item) => item !== id) : [...list, id],
-    );
+    if (result.removed) message.info('已从购物车移除');
+    else if (result.limited) message.warning(`库存不足，仅剩 ${result.stock} 件`);
   }
 
   useEffect(() => {
@@ -92,231 +110,190 @@ export default function App() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!cartOpen) return undefined;
-
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape') setCartOpen(false);
-    };
-    window.addEventListener('keydown', onKeyDown);
-
-    return () => {
-      document.body.style.overflow = prev;
-      window.removeEventListener('keydown', onKeyDown);
-    };
-  }, [cartOpen]);
+  const categoryTree = (
+    <Tree
+      blockNode
+      defaultExpandAll
+      selectedKeys={[categoryId]}
+      treeData={treeData}
+      onSelect={(keys) => {
+        if (keys[0]) selectCategory(String(keys[0]));
+      }}
+    />
+  );
 
   return (
-    <div className="page">
-      <header className="header">
-        <div className="header-text">
-          <p className="eyebrow">Demo Shop</p>
-          <h1>商品选购</h1>
+    <div className="shop-page">
+      <Flex justify="space-between" align="center" gap={12} className="shop-header">
+        <div>
+          <Text type="secondary">Demo Shop</Text>
+          <Title level={2} style={{ margin: 0 }}>
+            商品选购
+          </Title>
         </div>
-        <button
-          type="button"
-          className="cart-btn"
-          onClick={() => setCartOpen(true)}
-          aria-expanded={cartOpen}
-          aria-controls="cart-panel"
-        >
-          购物车
-          {totalCount > 0 ? <span className="badge">{totalCount}</span> : null}
-        </button>
-      </header>
+        <Badge count={totalCount} offset={[-4, 4]}>
+          <Button
+            type="primary"
+            icon={<ShoppingCartOutlined />}
+            onClick={() => setCartOpen(true)}
+          >
+            购物车
+          </Button>
+        </Badge>
+      </Flex>
 
-      <div className="shop">
-        <aside className="category-side">
-          <p className="category-title">分类</p>
-          <CategoryMenu
-            selectedId={categoryId}
-            onSelect={selectCategory}
-            expanded={expanded}
-            onToggle={toggleExpanded}
-          />
-        </aside>
-
-        <main className="main">
-          <div className="category-mobile">
-            <button
-              type="button"
-              className="category-toggle"
-              aria-expanded={mobileMenuOpen}
-              onClick={() => setMobileMenuOpen((open) => !open)}
-            >
-              <span>分类：{categoryName(categoryId)}</span>
-              <span>{mobileMenuOpen ? '收起' : '展开'}</span>
-            </button>
-            {mobileMenuOpen ? (
-              <div className="category-panel">
-                <CategoryMenu
-                  selectedId={categoryId}
-                  onSelect={selectCategory}
-                  expanded={expanded}
-                  onToggle={toggleExpanded}
-                />
-              </div>
-            ) : null}
-          </div>
+      <Row gutter={[16, 16]}>
+        <Col xs={0} md={6}>
+          <Card title="分类" size="small">
+            {categoryTree}
+          </Card>
+        </Col>
+        <Col xs={24} md={18}>
+          {isMobile ? (
+            <Button block style={{ marginBottom: 12 }} onClick={() => setMobileMenuOpen(true)}>
+              分类：{categoryName(categoryId)}
+            </Button>
+          ) : null}
 
           {loading ? (
-            <div className="state-box" aria-live="polite">
-              <div className="spinner" />
-              <p>正在加载商品…</p>
-            </div>
+            <Flex justify="center" style={{ padding: 64 }}>
+              <Spin tip="正在加载商品…" size="large" />
+            </Flex>
           ) : null}
 
-          {!loading && error ? (
-            <div className="state-box error">
-              <p>{error}</p>
-            </div>
-          ) : null}
+          {!loading && error ? <Card>{error}</Card> : null}
 
           {!loading && !error && visibleProducts.length === 0 ? (
-            <div className="state-box">
-              <p>这个分类下暂时没有商品</p>
-            </div>
+            <Card>这个分类下暂时没有商品</Card>
           ) : null}
 
           {!loading && !error && visibleProducts.length > 0 ? (
-            <section className="grid" aria-label="商品列表">
+            <Row gutter={[12, 12]}>
               {visibleProducts.map((product) => (
-                <article key={product.id} className="card">
-                  <div
-                    className="thumb"
-                    style={{ background: product.color }}
-                    aria-hidden="true"
-                  />
-                  <div className="card-body">
-                    <div className="meta">
-                      <span className="tag">{product.category}</span>
-                      <span className="stock">库存 {product.stock}</span>
-                    </div>
-                    <h2>{product.name}</h2>
-                    <p className="desc">{product.desc}</p>
-                    <div className="card-footer">
-                      <strong>{formatPrice(product.price)}</strong>
-                      <button
-                        type="button"
-                        className="add-btn"
-                        onClick={() => handleAdd(product)}
-                      >
-                        加入购物车
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </section>
-          ) : null}
-        </main>
-      </div>
-
-      {cartOpen ? (
-        <div className="cart-layer" role="presentation">
-          <button
-            type="button"
-            className="cart-backdrop"
-            aria-label="关闭购物车"
-            onClick={() => setCartOpen(false)}
-          />
-          <aside
-            id="cart-panel"
-            className="drawer"
-            role="dialog"
-            aria-modal="true"
-            aria-label="购物车"
-          >
-            <div className="drawer-handle" aria-hidden="true" />
-            <div className="drawer-head">
-              <h2>购物车</h2>
-              <button
-                type="button"
-                className="ghost close-btn"
-                onClick={() => setCartOpen(false)}
-              >
-                关闭
-              </button>
-            </div>
-            {cartList.length === 0 ? (
-              <p className="empty">还没有商品，去挑几件吧。</p>
-            ) : (
-              <ul className="cart-list">
-                {cartList.map(({ product, qty }) => (
-                  <li key={product.id}>
-                    <div className="cart-item-main">
-                      <span
-                        className="cart-swatch"
+                <Col key={product.id} xs={12} sm={12} md={12} lg={8}>
+                  <Card
+                    hoverable
+                    cover={
+                      <div
+                        className="product-cover"
                         style={{ background: product.color }}
-                        aria-hidden="true"
                       />
-                      <div>
-                        <p className="cart-name">{product.name}</p>
-                        <p className="cart-sub">{formatPrice(product.price)}</p>
-                      </div>
-                    </div>
-                    <div className="qty">
-                      <button
-                        type="button"
-                        className="qty-btn"
-                        aria-label={`减少${product.name}`}
-                        onClick={() => handleQty(product.id, -1)}
-                      >
-                        −
-                      </button>
-                      <span className="qty-num">{qty}</span>
-                      <button
-                        type="button"
-                        className="qty-btn"
-                        aria-label={`增加${product.name}`}
-                        disabled={qty >= product.stock}
-                        onClick={() => handleQty(product.id, 1)}
-                      >
-                        +
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost"
-                        onClick={() => {
-                          removeItem(product.id);
-                          pushToast('已从购物车移除');
-                        }}
-                      >
-                        移除
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <div className="drawer-foot">
-              <div className="drawer-total">
-                <span>合计</span>
-                <strong>{formatPrice(totalPrice)}</strong>
-              </div>
-              <button
-                type="button"
-                className="checkout-btn"
-                disabled={cartList.length === 0}
-                onClick={() => setCartOpen(false)}
-              >
-                继续选购
-              </button>
-            </div>
-          </aside>
-        </div>
-      ) : null}
+                    }
+                  >
+                    <Flex justify="space-between" gap={8}>
+                      <Text type="secondary">{product.category}</Text>
+                      <Text type="secondary">库存 {product.stock}</Text>
+                    </Flex>
+                    <Title level={5} style={{ marginTop: 8, marginBottom: 4 }}>
+                      {product.name}
+                    </Title>
+                    <Paragraph type="secondary" ellipsis={{ rows: 2 }} style={{ minHeight: 44 }}>
+                      {product.desc}
+                    </Paragraph>
+                    <Flex justify="space-between" align="center" gap={8} wrap>
+                      <Text strong>{formatPrice(product.price)}</Text>
+                      <Button type="primary" size={isMobile ? 'small' : 'middle'} onClick={() => handleAdd(product)}>
+                        加入购物车
+                      </Button>
+                    </Flex>
+                  </Card>
+                </Col>
+              ))}
+            </Row>
+          ) : null}
+        </Col>
+      </Row>
 
-      <div className="toasts" aria-live="polite">
-        {toasts.map((toast) => (
-          <div key={toast.id} className="toast">
-            {toast.message}
-          </div>
-        ))}
-      </div>
+      <Drawer
+        title="商品分类"
+        placement="top"
+        height="70vh"
+        open={mobileMenuOpen}
+        onClose={() => setMobileMenuOpen(false)}
+      >
+        {categoryTree}
+      </Drawer>
+
+      <Drawer
+        title="购物车"
+        placement={isMobile ? 'bottom' : 'right'}
+        height={isMobile ? '78vh' : undefined}
+        width={isMobile ? '100%' : 420}
+        open={cartOpen}
+        onClose={() => setCartOpen(false)}
+        footer={
+          <Flex justify="space-between" align="center" gap={12}>
+            <Text>
+              合计 <Text strong>{formatPrice(totalPrice)}</Text>
+            </Text>
+            <Button disabled={cartList.length === 0} onClick={() => setCartOpen(false)}>
+              继续选购
+            </Button>
+          </Flex>
+        }
+      >
+        {cartList.length === 0 ? (
+          <Text type="secondary">还没有商品，去挑几件吧。</Text>
+        ) : (
+          <Flex vertical gap={16}>
+            {cartList.map(({ product, qty }) => (
+              <Flex key={product.id} justify="space-between" align="center" gap={12}>
+                <Flex align="center" gap={10} style={{ minWidth: 0 }}>
+                  <span className="cart-swatch" style={{ background: product.color }} />
+                  <div style={{ minWidth: 0 }}>
+                    <Text ellipsis style={{ display: 'block', maxWidth: isMobile ? 120 : 160 }}>
+                      {product.name}
+                    </Text>
+                    <Text type="secondary">{formatPrice(product.price)}</Text>
+                  </div>
+                </Flex>
+                <Space size={4}>
+                  <Button size="small" onClick={() => handleQty(product.id, -1)}>
+                    −
+                  </Button>
+                  <Text style={{ minWidth: 16, textAlign: 'center' }}>{qty}</Text>
+                  <Button
+                    size="small"
+                    disabled={qty >= product.stock}
+                    onClick={() => handleQty(product.id, 1)}
+                  >
+                    +
+                  </Button>
+                  <Button
+                    type="link"
+                    danger
+                    size="small"
+                    onClick={() => {
+                      removeItem(product.id);
+                      message.info('已从购物车移除');
+                    }}
+                  >
+                    移除
+                  </Button>
+                </Space>
+              </Flex>
+            ))}
+          </Flex>
+        )}
+      </Drawer>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <ConfigProvider
+      locale={zhCN}
+      theme={{
+        token: {
+          colorPrimary: '#0f766e',
+          borderRadius: 10,
+        },
+      }}
+    >
+      <AntdApp>
+        <Shop />
+      </AntdApp>
+    </ConfigProvider>
   );
 }
