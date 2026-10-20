@@ -1,18 +1,26 @@
 import { useEffect, useState } from 'react';
-import { fetchProducts } from './mock/products';
+import CategoryMenu from './CategoryMenu';
+import { categoryIdsFor, categoryName, fetchProducts } from './mock/products';
 import { useCartStore } from './store/cart';
 
 function formatPrice(value) {
   return `¥${value.toFixed(2)}`;
 }
 
+let toastSeq = 0;
+
 export default function App() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [cartOpen, setCartOpen] = useState(false);
+  const [categoryId, setCategoryId] = useState('all');
+  const [expanded, setExpanded] = useState(['home', 'digital', 'wear']);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [toasts, setToasts] = useState([]);
 
   const addItem = useCartStore((s) => s.addItem);
+  const setQty = useCartStore((s) => s.setQty);
   const removeItem = useCartStore((s) => s.removeItem);
   const items = useCartStore((s) => s.items);
   const cartList = Object.values(items);
@@ -21,6 +29,47 @@ export default function App() {
     (sum, row) => sum + row.product.price * row.qty,
     0,
   );
+
+  const allowedIds = categoryIdsFor(categoryId);
+  const visibleProducts = allowedIds
+    ? products.filter((product) => allowedIds.includes(product.categoryId))
+    : products;
+
+  function pushToast(message) {
+    const id = ++toastSeq;
+    setToasts((list) => [...list, { id, message }].slice(-3));
+    window.setTimeout(() => {
+      setToasts((list) => list.filter((item) => item.id !== id));
+    }, 1800);
+  }
+
+  function handleAdd(product) {
+    const result = addItem(product);
+    if (!result.added) {
+      pushToast(`库存不足，仅剩 ${result.stock} 件`);
+      return;
+    }
+    pushToast(result.limited ? '已加入购物车，已达库存上限' : '已加入购物车');
+  }
+
+  function handleQty(productId, delta) {
+    const row = items[productId];
+    if (!row) return;
+    const result = setQty(productId, row.qty + delta);
+    if (result.removed) pushToast('已从购物车移除');
+    else if (result.limited) pushToast(`库存不足，仅剩 ${result.stock} 件`);
+  }
+
+  function selectCategory(id) {
+    setCategoryId(id);
+    setMobileMenuOpen(false);
+  }
+
+  function toggleExpanded(id) {
+    setExpanded((list) =>
+      list.includes(id) ? list.filter((item) => item !== id) : [...list, id],
+    );
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -79,52 +128,92 @@ export default function App() {
         </button>
       </header>
 
-      <main className="main">
-        {loading ? (
-          <div className="state-box" aria-live="polite">
-            <div className="spinner" />
-            <p>正在加载商品…</p>
-          </div>
-        ) : null}
+      <div className="shop">
+        <aside className="category-side">
+          <p className="category-title">分类</p>
+          <CategoryMenu
+            selectedId={categoryId}
+            onSelect={selectCategory}
+            expanded={expanded}
+            onToggle={toggleExpanded}
+          />
+        </aside>
 
-        {!loading && error ? (
-          <div className="state-box error">
-            <p>{error}</p>
-          </div>
-        ) : null}
-
-        {!loading && !error ? (
-          <section className="grid" aria-label="商品列表">
-            {products.map((product) => (
-              <article key={product.id} className="card">
-                <div
-                  className="thumb"
-                  style={{ background: product.color }}
-                  aria-hidden="true"
+        <main className="main">
+          <div className="category-mobile">
+            <button
+              type="button"
+              className="category-toggle"
+              aria-expanded={mobileMenuOpen}
+              onClick={() => setMobileMenuOpen((open) => !open)}
+            >
+              <span>分类：{categoryName(categoryId)}</span>
+              <span>{mobileMenuOpen ? '收起' : '展开'}</span>
+            </button>
+            {mobileMenuOpen ? (
+              <div className="category-panel">
+                <CategoryMenu
+                  selectedId={categoryId}
+                  onSelect={selectCategory}
+                  expanded={expanded}
+                  onToggle={toggleExpanded}
                 />
-                <div className="card-body">
-                  <div className="meta">
-                    <span className="tag">{product.category}</span>
-                    <span className="stock">库存 {product.stock}</span>
+              </div>
+            ) : null}
+          </div>
+
+          {loading ? (
+            <div className="state-box" aria-live="polite">
+              <div className="spinner" />
+              <p>正在加载商品…</p>
+            </div>
+          ) : null}
+
+          {!loading && error ? (
+            <div className="state-box error">
+              <p>{error}</p>
+            </div>
+          ) : null}
+
+          {!loading && !error && visibleProducts.length === 0 ? (
+            <div className="state-box">
+              <p>这个分类下暂时没有商品</p>
+            </div>
+          ) : null}
+
+          {!loading && !error && visibleProducts.length > 0 ? (
+            <section className="grid" aria-label="商品列表">
+              {visibleProducts.map((product) => (
+                <article key={product.id} className="card">
+                  <div
+                    className="thumb"
+                    style={{ background: product.color }}
+                    aria-hidden="true"
+                  />
+                  <div className="card-body">
+                    <div className="meta">
+                      <span className="tag">{product.category}</span>
+                      <span className="stock">库存 {product.stock}</span>
+                    </div>
+                    <h2>{product.name}</h2>
+                    <p className="desc">{product.desc}</p>
+                    <div className="card-footer">
+                      <strong>{formatPrice(product.price)}</strong>
+                      <button
+                        type="button"
+                        className="add-btn"
+                        onClick={() => handleAdd(product)}
+                      >
+                        加入购物车
+                      </button>
+                    </div>
                   </div>
-                  <h2>{product.name}</h2>
-                  <p className="desc">{product.desc}</p>
-                  <div className="card-footer">
-                    <strong>{formatPrice(product.price)}</strong>
-                    <button
-                      type="button"
-                      className="add-btn"
-                      onClick={() => addItem(product)}
-                    >
-                      加入购物车
-                    </button>
-                  </div>
-                </div>
-              </article>
-            ))}
-          </section>
-        ) : null}
-      </main>
+                </article>
+              ))}
+            </section>
+          ) : null}
+        </main>
+      </div>
 
       {cartOpen ? (
         <div className="cart-layer" role="presentation">
@@ -166,18 +255,39 @@ export default function App() {
                       />
                       <div>
                         <p className="cart-name">{product.name}</p>
-                        <p className="cart-sub">
-                          {formatPrice(product.price)} × {qty}
-                        </p>
+                        <p className="cart-sub">{formatPrice(product.price)}</p>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      className="ghost"
-                      onClick={() => removeItem(product.id)}
-                    >
-                      移除
-                    </button>
+                    <div className="qty">
+                      <button
+                        type="button"
+                        className="qty-btn"
+                        aria-label={`减少${product.name}`}
+                        onClick={() => handleQty(product.id, -1)}
+                      >
+                        −
+                      </button>
+                      <span className="qty-num">{qty}</span>
+                      <button
+                        type="button"
+                        className="qty-btn"
+                        aria-label={`增加${product.name}`}
+                        disabled={qty >= product.stock}
+                        onClick={() => handleQty(product.id, 1)}
+                      >
+                        +
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => {
+                          removeItem(product.id);
+                          pushToast('已从购物车移除');
+                        }}
+                      >
+                        移除
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -199,6 +309,14 @@ export default function App() {
           </aside>
         </div>
       ) : null}
+
+      <div className="toasts" aria-live="polite">
+        {toasts.map((toast) => (
+          <div key={toast.id} className="toast">
+            {toast.message}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
