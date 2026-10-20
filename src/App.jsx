@@ -43,17 +43,36 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!cartOpen) return undefined;
+
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setCartOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [cartOpen]);
+
   return (
     <div className="page">
       <header className="header">
-        <div>
+        <div className="header-text">
           <p className="eyebrow">Demo Shop</p>
           <h1>商品选购</h1>
         </div>
         <button
           type="button"
           className="cart-btn"
-          onClick={() => setCartOpen((v) => !v)}
+          onClick={() => setCartOpen(true)}
+          aria-expanded={cartOpen}
+          aria-controls="cart-panel"
         >
           购物车
           {totalCount > 0 ? <span className="badge">{totalCount}</span> : null}
@@ -92,7 +111,11 @@ export default function App() {
                   <p className="desc">{product.desc}</p>
                   <div className="card-footer">
                     <strong>{formatPrice(product.price)}</strong>
-                    <button type="button" onClick={() => addItem(product)}>
+                    <button
+                      type="button"
+                      className="add-btn"
+                      onClick={() => addItem(product)}
+                    >
                       加入购物车
                     </button>
                   </div>
@@ -104,41 +127,77 @@ export default function App() {
       </main>
 
       {cartOpen ? (
-        <aside className="drawer" aria-label="购物车">
-          <div className="drawer-head">
-            <h2>购物车</h2>
-            <button type="button" className="ghost" onClick={() => setCartOpen(false)}>
-              关闭
-            </button>
-          </div>
-          {cartList.length === 0 ? (
-            <p className="empty">还没有商品，去挑几件吧。</p>
-          ) : (
-            <ul className="cart-list">
-              {cartList.map(({ product, qty }) => (
-                <li key={product.id}>
-                  <div>
-                    <p className="cart-name">{product.name}</p>
-                    <p className="cart-sub">
-                      {formatPrice(product.price)} × {qty}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="ghost"
-                    onClick={() => removeItem(product.id)}
-                  >
-                    移除
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="drawer-foot">
-            <span>合计</span>
-            <strong>{formatPrice(totalPrice)}</strong>
-          </div>
-        </aside>
+        <div className="cart-layer" role="presentation">
+          <button
+            type="button"
+            className="cart-backdrop"
+            aria-label="关闭购物车"
+            onClick={() => setCartOpen(false)}
+          />
+          <aside
+            id="cart-panel"
+            className="drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label="购物车"
+          >
+            <div className="drawer-handle" aria-hidden="true" />
+            <div className="drawer-head">
+              <h2>购物车</h2>
+              <button
+                type="button"
+                className="ghost close-btn"
+                onClick={() => setCartOpen(false)}
+              >
+                关闭
+              </button>
+            </div>
+            {cartList.length === 0 ? (
+              <p className="empty">还没有商品，去挑几件吧。</p>
+            ) : (
+              <ul className="cart-list">
+                {cartList.map(({ product, qty }) => (
+                  <li key={product.id}>
+                    <div className="cart-item-main">
+                      <span
+                        className="cart-swatch"
+                        style={{ background: product.color }}
+                        aria-hidden="true"
+                      />
+                      <div>
+                        <p className="cart-name">{product.name}</p>
+                        <p className="cart-sub">
+                          {formatPrice(product.price)} × {qty}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={() => removeItem(product.id)}
+                    >
+                      移除
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="drawer-foot">
+              <div className="drawer-total">
+                <span>合计</span>
+                <strong>{formatPrice(totalPrice)}</strong>
+              </div>
+              <button
+                type="button"
+                className="checkout-btn"
+                disabled={cartList.length === 0}
+                onClick={() => setCartOpen(false)}
+              >
+                继续选购
+              </button>
+            </div>
+          </aside>
+        </div>
       ) : null}
     </div>
   );
